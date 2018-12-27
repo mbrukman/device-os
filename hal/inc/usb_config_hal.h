@@ -30,7 +30,7 @@
 
 #if PLATFORM_ID >= 6
 // FIXME: when HID is implemented on mesh platforms.
-# if PLATFORM_ID != 12 && PLATFORM_ID != 13 && PLATFORM_ID != 14
+# ifndef HAL_PLATFORM_MESH
 #  define SPARK_USB_MOUSE
 #  define SPARK_USB_KEYBOARD
 # endif
