@@ -125,3 +125,5 @@
 
 #define APP_USBD_VID                            USBD_VID_SPARK
 #define APP_USBD_PID                            USBD_PID_CDC
+
+#define NRFX_POWER_CONFIG_DEFAULT_DCDCEN        1
