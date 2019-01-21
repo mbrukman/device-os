@@ -165,6 +165,8 @@ void Reset_System(void) {
 
     BUTTON_Uninit();
 
+    hal_exflash_uninit();
+
     __DSB();
 }
 
