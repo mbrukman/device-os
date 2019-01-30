@@ -62,6 +62,11 @@ void connect_to_cloud(system_tick_t timeout)
     Particle.connect();
     waitFor(Particle.connected, timeout);
 }
+void connect_to_cellular(system_tick_t timeout)
+{
+    Cellular.connect();
+    waitFor(Cellular.ready, timeout);
+}
 void consume_all_sockets(uint8_t protocol)
 {
     static int port = 9000;
@@ -533,5 +538,156 @@ test(MDM_02_at_commands_with_long_response_are_correctly_parsed_and_flow_control
     assertEqual(ret, (int)RESP_OK);
     assertMoreOrEqual(lines, 200);
 }
+
+// RAT TESTS
+// ===============================
+bool verify_cat_m1_only_rat()
+{
+    CellularRat rat_get;
+    if (Cellular.getRat(rat_get)) {
+        if ( rat_get.sel  == RAT_CAT_M1 &&
+             rat_get.pref == RAT_DEFAULT )
+        {
+            return true;
+        }
+    }
+    return false;
+}
+bool verify_modem_default_rat()
+{
+    CellularRat rat_get;
+    if (Cellular.getRat(rat_get)) {
+        if ( rat_get.sel  == RAT_CAT_M1 &&
+             rat_get.pref == RAT_CAT_NB1 )
+        {
+            return true;
+        }
+    }
+    return false;
+}
+bool set_rat(CellularRat& rat_set)
+{
+    if (Cellular.setRat(rat_set)) {
+        connect_to_cellular(60*1000);
+        return true;
+    }
+    return false;
+}
+bool reset_rat_settings() {
+    CellularRat rat_set;
+    rat_set.sel = RAT_DEFAULT;
+    rat_set.pref = RAT_DEFAULT;
+    return set_rat(rat_set);
+    // Set rat will be restored as if we just
+    // booted and have not used the Wiring interface to set a RAT.
+}
+bool is_not_r410 = false;
+/* Ensure the modem is configured with factory default of Cat-M1,Cat-NB1 (7,8)
+ */
+test(RAT_00_apply_modem_factory_defaults) {
+    if (cellular_modem_type() != DEV_SARA_R410) {
+        is_not_r410 = true;
+        skip();
+        return;
+    }
+    // Given the device is currently disconnected from the Cloud
+    disconnect_from_cloud(30*1000, true);
+    // When we set and verify the RAT to factory defaults
+    CellularRat rat_set;
+    rat_set.sel = RAT_CAT_M1;
+    rat_set.pref = RAT_CAT_NB1;
+    set_rat(rat_set);
+    bool default_rat_applied = verify_modem_default_rat();
+    // Then the default RAT has been applied
+    assertEqual(default_rat_applied, true);
+    reset_rat_settings();
+}
+/* Scenario: System will default to Cat-M1 mode
+ *
+ * Given the device is currently disconnected from the Cloud
+ * When we don't explicitly set the RAT on R410
+ * When the current RAT is the modem default of Cat-M1,Cat-NB1 (7,8)
+ * Then the system defaults to Cat-M1 (7)
+ */
+test(RAT_01_system_will_set_cat_m1_mode_by_default) {
+    if (is_not_r410) {
+        skip();
+        return;
+    }
+    // Given the device is currently disconnected from the Cloud
+    disconnect_from_cloud(30*1000, true);
+    // When we don't explicitly set the RAT on R410
+       /* not setting RAT here */
+    // When the current RAT is the modem default of Cat-M1,Cat-NB1 (7,8)
+    cellular_on(NULL); // ensure we are ON with a blocking call, but not connecting yet.
+    bool default_rat_applied = verify_modem_default_rat();
+    assertEqual(default_rat_applied, true);
+    connect_to_cellular(60*1000);
+    bool cat_m1_only_applied = verify_cat_m1_only_rat();
+    // Then the system defaults to Cat-M1 (7)
+    assertEqual(cat_m1_only_applied, true);
+}
+/* Scenario: System will remain defaulted to Cat-M1 mode
+ *
+ * Given the device is currently disconnected from the Cloud
+ * When we don't explicitly set the RAT on R410
+ * When the current RAT is the Cat-M1 only (7)
+ * When the cellular connection is made
+ * Then the system remains defaulted to Cat-M1 (7)
+ */
+test(RAT_02_system_will_remain_set_to_cat_m1_mode_only) {
+    if (is_not_r410) {
+        skip();
+        return;
+    }
+    // Given the device is currently disconnected from the Cloud
+    disconnect_from_cloud(30*1000, true);
+    // When we don't explicitly set the RAT on R410
+       /* not setting RAT here */
+    // When the current RAT is the modem default of Cat-M1,Cat-NB1 (7,8)
+    cellular_on(NULL); // ensure we are ON with a blocking call, but not connecting yet.
+    bool cat_m1_only_applied1 = verify_cat_m1_only_rat();
+    assertEqual(cat_m1_only_applied1, true);
+    connect_to_cellular(60*1000);
+    bool cat_m1_only_applied2 = verify_cat_m1_only_rat();
+    // Then the system remains defaulted to Cat-M1 (7)
+    assertEqual(cat_m1_only_applied2, true);
+}
+/* Scenario: Trying to set an invalid RAT will fail
+ *
+ * Given the device is currently disconnected from the Cloud
+ * When we set an invalid RAT
+ * Then setRat will fail
+ */
+test(RAT_03_trying_to_set_an_invalid_rat_will_fail) {
+    if (is_not_r410) {
+        skip();
+        return;
+    }
+    // Given the device is currently disconnected from the Cloud
+    disconnect_from_cloud(30*1000, true);
+    // When we set an invalid band
+    CellularRat rat_set;
+    rat_set.sel = (MDM_Rat) 6;
+    rat_set.pref = RAT_CAT_M1;
+    bool set_rat_fails1 = set_rat(rat_set);
+    // Then set rat will fail
+    assertNotEqual(set_rat_fails1, true);
+
+    rat_set.sel = (MDM_Rat) 9;
+    rat_set.pref = RAT_CAT_NB1;
+    bool set_rat_fails2 = set_rat(rat_set);
+    // Then set rat will fail
+    assertNotEqual(set_rat_fails2, true);
+}
+test(RAT_04_restore_defaults) {
+    if (is_not_r410) {
+        skip();
+        return;
+    }
+    bool rat_default_restored = reset_rat_settings();
+    assertEqual(rat_default_restored, true);
+}
+// RAT ============
 
 #endif

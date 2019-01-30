@@ -153,6 +153,46 @@ bool operator==(const CellularBand& lhs,const T& rhs) {
 
 #endif // defined(UNIT_TEST)
 
+/*
+ * CellularRat
+ */
+class CellularRat : public Printable {
+private:
+    typedef void (CellularRat::*bool_type)() const;
+    void this_type_does_not_support_comparisons() const {}
+
+public:
+    /* false when constructed, used to indicate whether
+     * last operation on object was successful or not. */
+    bool ok;
+
+    MDM_Rat sel = RAT_DEFAULT;
+    MDM_Rat pref = RAT_DEFAULT;
+    MDM_Rat pref2 = RAT_DEFAULT;
+
+    virtual size_t printTo(Print& p) const;
+
+    explicit CellularRat(bool b=false):ok(b) {}
+    operator bool_type() const {
+        return ok==true ? &CellularRat::this_type_does_not_support_comparisons : 0;
+    }
+};
+
+#ifndef UNIT_TEST
+
+template <typename T>
+bool operator!=(const CellularRat& lhs,const T& rhs) {
+    lhs.this_type_does_not_support_comparisons();
+    return false;
+}
+template <typename T>
+bool operator==(const CellularRat& lhs,const T& rhs) {
+    lhs.this_type_does_not_support_comparisons();
+    return false;
+}
+
+#endif // defined(UNIT_TEST)
+
 #endif // Wiring_Cellular || defined(UNIT_TEST)
 
 #endif // __SPARK_WIRING_CELLULAR_PRINTABLE_H

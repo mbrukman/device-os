@@ -100,6 +100,9 @@ public:
     bool getBandSelect(CellularBand &data_get);
     bool getBandAvailable(CellularBand &data_get);
 
+    bool setRat(CellularRat &rat_set);
+    bool getRat(CellularRat &rat_get);
+
     template<typename... Targs>
     inline int command(const char* format, Targs... Fargs)
     {

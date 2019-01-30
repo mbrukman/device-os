@@ -155,6 +155,27 @@ struct MDM_BandSelect {
 typedef struct MDM_BandSelect MDM_BandSelect;
 #endif
 
+//! Rats
+typedef enum { RAT_DEFAULT=-1, RAT_CAT_M1=7, RAT_CAT_NB1=8 } MDM_Rat;
+
+#ifdef __cplusplus
+//! RAT struct
+struct MDM_RAT_data {
+    uint16_t size;
+    MDM_Rat sel;
+    MDM_Rat pref;
+    MDM_Rat pref2;
+
+    MDM_RAT_data()
+    {
+        memset(this, -1, sizeof(*this));
+        size = sizeof(*this);
+    }
+};
+#else
+typedef struct MDM_RAT_data MDM_RAT_data;
+#endif
+
 //! An IP v4 address
 typedef uint32_t MDM_IP;
 #define NOIP ((MDM_IP)0) //!< No IP address

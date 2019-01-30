@@ -63,6 +63,17 @@ cellular_result_t cellular_band_select_get(MDM_BandSelect* bands, void* reserved
  */
 cellular_result_t cellular_band_available_get(MDM_BandSelect* bands, void* reserved);
 
+/**
+ * Sets the RAT preference
+ *
+ * RAT is non-volatile and will be remembered when modem is reset.
+ */
+cellular_result_t cellular_rat_set(MDM_RAT_data* rat_data, void* reserved);
+
+/**
+ * Gets the RAT set in the modem (modem must be on and initialized)
+ */
+cellular_result_t cellular_rat_get(MDM_RAT_data* rat_data, void* reserved);
 
 #ifdef __cplusplus
 }

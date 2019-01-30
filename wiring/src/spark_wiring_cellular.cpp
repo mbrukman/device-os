@@ -149,6 +149,32 @@ namespace spark {
         return (band_get.ok = true);
     }
 
+    bool CellularClass::setRat(CellularRat &rat_set) {
+        MDM_RAT_data rat_hal;
+        rat_hal.sel = rat_set.sel;
+        rat_hal.pref = rat_set.pref;
+        rat_hal.pref2 = rat_set.pref2;
+        if (cellular_rat_set(&rat_hal, NULL) != 0) {
+            rat_set.ok = false; // RAT object was not updated
+        } else {
+            rat_set.ok = true;
+        }
+        return rat_set.ok;
+    }
+
+    bool CellularClass::getRat(CellularRat &rat_get) {
+        MDM_RAT_data rat_hal;
+        if (cellular_rat_get(&rat_hal, NULL) != 0) {
+            rat_get.ok = false; // RAT object was not updated
+        } else {
+            rat_get.sel = rat_hal.sel;
+            rat_get.pref = rat_hal.pref;
+            rat_get.pref2 = rat_hal.pref2;
+            rat_get.ok = true;
+        }
+        return rat_get.ok;
+    }
+
     CellularClass Cellular;
     NetworkClass& Network = Cellular;
 }

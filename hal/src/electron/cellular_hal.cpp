@@ -408,4 +408,17 @@ void cellular_set_power_mode(int mode, void* reserved)
     }
 }
 
+cellular_result_t cellular_rat_set(MDM_RAT_data* rat_data, void* reserved)
+{
+    CHECK_SUCCESS(electronMDM.setRat(*rat_data));
+    return 0;
+}
+
+cellular_result_t cellular_rat_get(MDM_RAT_data* rat_data, void* reserved)
+{
+    bool rv = electronMDM.getRat(*rat_data);
+    CHECK_SUCCESS(rv);
+    return 0;
+}
+
 #endif // !defined(HAL_CELLULAR_EXCLUDE)

@@ -143,4 +143,33 @@ test(api_cellular_lock_unlock) {
     API_COMPILE(Cellular.unlock());
 }
 
+test(api_cellular_rat_get_set) {
+    CellularRat rat1;
+    CellularRat rat2;
+    rat2.sel = RAT_CAT_M1;
+    rat2.pref = RAT_CAT_NB1;
+    rat2.ok = true;
+    bool result;
+
+    API_COMPILE(result = Cellular.getRat(rat1));
+
+    API_COMPILE(result = Cellular.setRat(rat2));
+
+    API_COMPILE(!Cellular.getRat(rat1));
+
+    API_COMPILE(!!Cellular.getRat(rat1));
+
+    API_COMPILE(result = rat1);
+
+    API_COMPILE(result = rat2);
+
+    API_COMPILE(Serial.println(rat2));
+
+    // These should not compile, test these manually by changing to API_COMPILE()
+    API_NO_COMPILE(rat1 == rat2);
+    API_NO_COMPILE(rat1 != rat2);
+
+    (void)result; // avoid unused warning
+}
+
 #endif

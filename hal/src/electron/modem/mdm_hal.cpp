@@ -68,6 +68,7 @@ std::recursive_mutex mdm_mutex;
 #define USOST_TIMEOUT   (10 * 1000)  /*  10 for R4, 1 for U2/G3 */
 #define USORF_TIMEOUT   ( 1 * 1000)
 #define COPS_TIMEOUT    ( 3 * 60 * 1000)
+#define URAT_TIMEOUT    ( 1 * 1000)
 
 // num sockets
 #define NUMSOCKETS      ((int)(sizeof(_sockets)/sizeof(*_sockets)))
@@ -189,9 +190,12 @@ MDMParser::MDMParser(void)
     _pwr       = false;
     _activated = false;
     _attached  = false;
-    _attached_urc = false; // updated by GPRS detached/attached URC,
-                           // used to notify system of prolonged GPRS detach.
-    _power_mode = 1; // default power mode is AT+UPSV=1
+    _attached_urc = false;      // updated by GPRS detached/attached URC,
+                                // used to notify system of prolonged GPRS detach.
+    _power_mode = 1;            // default power mode is AT+UPSV=1
+    _rat.sel    = RAT_DEFAULT;  // R410M radio access technology selected by user (modem factory default: 7)
+    _rat.pref   = RAT_DEFAULT;  // R410M radio access technology preferred by user (modem factory default: 8)
+    _rat.pref2  = RAT_DEFAULT;  // Not supported by R410M-02B, included for future proofing.
     _cancel_all_operations = false;
     sms_cb = NULL;
     memset(_sockets, 0, sizeof(_sockets));
@@ -205,6 +209,44 @@ MDMParser::MDMParser(void)
 
 void MDMParser::setPowerMode(int mode) {
     _power_mode = mode;
+}
+
+// Set the radio access technology used in MDMParser::registerNet()
+bool MDMParser::setRat(MDM_RAT_data &data_set) {
+    // .sel must be -1, 7 or 8
+    if (data_set.sel == RAT_DEFAULT) {
+        _rat.sel   = RAT_DEFAULT;
+        _rat.pref  = RAT_DEFAULT;
+        _rat.pref2 = RAT_DEFAULT;
+        return true;
+    }
+    if (!(data_set.sel == RAT_CAT_M1 || data_set.sel == RAT_CAT_NB1)) {
+        return false;
+    }
+    _rat.sel = data_set.sel;
+    // .pref may be 7 or 8, but will be set to -1 if neither are true
+    _rat.pref = (data_set.pref != RAT_CAT_M1 && data_set.pref != RAT_CAT_NB1) ? RAT_DEFAULT : data_set.pref;
+    // .pref2 is currently hardcoded to -1 and not used.
+    _rat.pref2 = RAT_DEFAULT;
+    return true;
+}
+
+bool MDMParser::getRat(MDM_RAT_data &data_get) {
+    bool ok = false;
+    LOCK();
+    if (_init && _pwr && _dev.dev != DEV_UNKNOWN) {
+        if (_dev.dev == DEV_SARA_R410) {
+            MDM_INFO("\r\n[ Modem::getRat ] = = = = = = = = = = =");
+            MDM_RAT_data temp_rat_data;
+            sendFormated("AT+URAT?\r\n");
+            if (RESP_OK == waitFinalResp(_cbURAT, &temp_rat_data, URAT_TIMEOUT)) {
+                ok = true;
+                memcpy(&data_get, &temp_rat_data, sizeof(MDM_RAT_data));
+            }
+        }
+    }
+    UNLOCK();
+    return ok;
 }
 
 void MDMParser::cancel(void) {
@@ -927,6 +969,26 @@ int MDMParser::_cbCCID(int type, const char* buf, int len, char* ccid)
     return WAIT;
 }
 
+int MDMParser::_cbURAT(int type, const char* buf, int len, MDM_RAT_data* data)
+{
+    /* for use with DEV_SARA_R410 only! */
+
+    if ((type == TYPE_PLUS) && data){
+        int sel_act = -1, pref_act = -1, pref_act2 = -1;
+        /* 2ndPreferredAct not supported on R410M, included for future proofing.
+         * +URAT: <SelectedAcT>[, <PreferredAct>[, <2ndPreferredAct>]]
+         * +URAT: 7,8
+         */
+        if (sscanf(buf, "\r\n+URAT: %d,%d,%d", &sel_act, &pref_act, &pref_act2) >= 1) {
+            // unmatched parameters populated with -1
+            data->sel   = (MDM_Rat)sel_act;
+            data->pref  = (MDM_Rat)pref_act;
+            data->pref2 = (MDM_Rat)pref_act2;
+        }
+    }
+    return WAIT;
+}
+
 bool MDMParser::registerNet(const char* apn, NetStatus* status /*= NULL*/, system_tick_t timeout_ms /*= 180000*/)
 {
     LOCK();
@@ -936,12 +998,10 @@ bool MDMParser::registerNet(const char* apn, NetStatus* status /*= NULL*/, syste
         // commands as they will knock us off the cellular network.
         bool ok = false;
         if (!(ok = checkNetStatus())) {
-#ifdef MDM_DEBUG
-            // Show enabled RATs
-            sendFormated("AT+URAT?\r\n");
-            waitFinalResp();
-#endif // defined(MDM_DEBUG)
             if (_dev.dev == DEV_SARA_R410) {
+                bool set_cgdcont = false;
+                bool set_rat_user = false;
+                bool set_rat_system = false;
                 // Get default context settings
                 sendFormated("AT+CGDCONT?\r\n");
                 CGDCONTparam ctx = {};
@@ -954,14 +1014,60 @@ bool MDMParser::registerNet(const char* apn, NetStatus* status /*= NULL*/, syste
                 // configured to use the dual stack IPv4/IPv6 capability ("IPV4V6"), which is the case for
                 // the factory default settings. Ideally, setting of a default APN should be based on IMSI
                 if (strcmp(ctx.type, "IP") != 0 || strcmp(ctx.apn, apn ? apn : "") != 0) {
-                    // Stop the network registration and update the context settings
+                    set_cgdcont = true;
+                }
+                /* Show enabled RATs, and attempt to apply user RAT settings if specified.
+                 * If no user RAT settings specified, default to Cat-M1 mode only (RAT=7) to avoid
+                 * known issue on SARA-R410M-02B where if there is no signal, MT will search for
+                 * RAT=7, then search RAT=8 indefinitely.  If signal returns, MT would need to be
+                 * power cycled before RAT=7 would be scanned again.
+                 */
+                MDM_RAT_data temp_rat_data;
+                sendFormated("AT+URAT?\r\n");
+                waitFinalResp(_cbURAT, &temp_rat_data, URAT_TIMEOUT);
+                // If user has requested a RAT change, override all other logic
+                if ( ((_rat.sel  != RAT_DEFAULT) && (_rat.sel  != temp_rat_data.sel )) ||
+                     ((_rat.pref != RAT_DEFAULT) && (_rat.pref != temp_rat_data.pref)) )
+                {
+                    DEBUG_D("User RAT setting requested, +URAT: %d,%d\r\n", _rat.sel, _rat.pref);
+                    set_rat_user = true;
+                }
+                // Else check if system needs to force Cat-M1 mode
+                else if (temp_rat_data.sel == RAT_CAT_M1 && temp_rat_data.pref == RAT_CAT_NB1) {
+                    // DEBUG_D("Defaulting to Cat-M1 only, +URAT: %d,%d\r\n", temp_rat_data.sel, temp_rat_data.pref);
+                    set_rat_system = true;
+                }
+                if (set_cgdcont || set_rat_user || set_rat_system) {
+                    // Stop the network registration
                     sendFormated("AT+COPS=2\r\n");
                     if (waitFinalResp(nullptr, nullptr, COPS_TIMEOUT) != RESP_OK) {
                         goto failure;
                     }
-                    sendFormated("AT+CGDCONT=%d,\"IP\",\"%s\"\r\n", PDP_CONTEXT, apn ? apn : "");
-                    if (waitFinalResp() != RESP_OK) {
-                        goto failure;
+                    // Update the RAT settings based on user specification
+                    if (set_rat_user) {
+                        if (_rat.sel != RAT_DEFAULT && _rat.pref != RAT_DEFAULT) {
+                            sendFormated("AT+URAT=%d,%d\r\n", _rat.sel, _rat.pref);
+                        }
+                        else if (_rat.sel != RAT_DEFAULT && _rat.pref == RAT_DEFAULT) {
+                            sendFormated("AT+URAT=%d\r\n", _rat.sel);
+                        }
+                        if (waitFinalResp(nullptr, nullptr, URAT_TIMEOUT) != RESP_OK) {
+                            goto failure;
+                        }
+                    }
+                    // Force Cat-M1 mode
+                    if (set_rat_system) {
+                        sendFormated("AT+URAT=%d\r\n", RAT_CAT_M1);
+                        if (waitFinalResp(nullptr, nullptr, URAT_TIMEOUT) != RESP_OK) {
+                            goto failure;
+                        }
+                    }
+                    // Update the context settings
+                    if (set_cgdcont) {
+                        sendFormated("AT+CGDCONT=%d,\"IP\",\"%s\"\r\n", PDP_CONTEXT, apn ? apn : "");
+                        if (waitFinalResp() != RESP_OK) {
+                            goto failure;
+                        }
                     }
                 }
                 // Make sure automatic network registration is enabled
@@ -975,6 +1081,8 @@ bool MDMParser::registerNet(const char* apn, NetStatus* status /*= NULL*/, syste
                     goto failure;
                 }
             } else {
+                // Show enabled RATs
+                sendFormated("AT+URAT?\r\n");
                 // setup the GPRS network registration URC (Unsolicited Response Code)
                 // 0: (default value and factory-programmed value): network registration URC disabled
                 // 1: network registration URC enabled

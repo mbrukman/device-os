@@ -47,6 +47,18 @@ public:
     /* Used to set the power mode used in MDMParser::init() */
     void setPowerMode(int mode);
 
+    /** Used to set the radio access technology used in MDMParser::registerNet()
+        \param data_set is a structure to set RAT settings
+        \return true if data_set is formatted correctly, false otherwise
+    */
+    bool setRat(MDM_RAT_data &data_set);
+
+    /** Used to get the radio access technology set in the modem
+        \param data_get is a structure to get RAT settings
+        \return true if data_get is retrieved successfully, false otherwise
+    */
+    bool getRat(MDM_RAT_data &data_get);
+
     /* Used to cancel all operations */
     void cancel(void);
 
@@ -518,6 +530,7 @@ protected:
     static int _cbCGMM(int type, const char* buf, int len, DevStatus* s);
     static int _cbCPIN(int type, const char* buf, int len, Sim* sim);
     static int _cbCCID(int type, const char* buf, int len, char* ccid);
+    static int _cbURAT(int type, const char* buf, int len, MDM_RAT_data* data);
     // network
     static int _cbUGCNTRD(int type, const char* buf, int len, MDM_DataUsage* data);
     static int _cbBANDAVAIL(int type, const char* buf, int len, MDM_BandSelect* data);
@@ -584,6 +597,7 @@ protected:
     bool _attached;
     bool _attached_urc;
     int _power_mode;
+    MDM_RAT_data _rat;
     volatile bool _cancel_all_operations;
 #ifdef MDM_DEBUG
     int _debugLevel;

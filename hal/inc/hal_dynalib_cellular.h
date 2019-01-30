@@ -73,6 +73,8 @@ DYNALIB_FN(32, hal_cellular, cellular_unlock, void(void*))
 DYNALIB_FN(33, hal_cellular, cellular_set_power_mode, void(int mode, void* reserved))
 DYNALIB_FN(34, hal_cellular, cellular_connect, cellular_result_t(void*))
 DYNALIB_FN(35, hal_cellular, cellular_disconnect, cellular_result_t(void*))
+DYNALIB_FN(36, hal_cellular, cellular_rat_set, cellular_result_t(MDM_RAT_data*, void*))
+DYNALIB_FN(37, hal_cellular, cellular_rat_get, cellular_result_t(MDM_RAT_data*, void*))
 DYNALIB_END(hal_cellular)
 
 #endif  // PLATFORM_ID == 10

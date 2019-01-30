@@ -110,4 +110,22 @@ size_t CellularBand::printTo(Print& p) const
     return n;
 }
 
+size_t CellularRat::printTo(Print& p) const
+{
+    size_t n = 0;
+    if ((*this).sel != RAT_DEFAULT) {
+        n += p.print((*this).sel, DEC);
+        if ((*this).pref != RAT_DEFAULT) {
+            n += p.print(',');
+            n += p.print((*this).pref, DEC);
+        }
+        // Not currently supported or used, so don't print it
+        // if ((*this).pref2 != RAT_DEFAULT) {
+        //     n += p.print(',');
+        //     n += p.print((*this).pref2, DEC);
+        // }
+    }
+    return n;
+}
+
 #endif // Wiring_Cellular || defined(UNIT_TEST)
